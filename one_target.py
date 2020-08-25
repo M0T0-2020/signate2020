@@ -40,10 +40,8 @@ class Train_Predict:
     def make_off_df(self, _label, epoch_num, k):
         self.train_df['jobflag_2'] = self.train_df['jobflag'].apply(lambda x: 1 if x==_label else 0)
         
-        trn_cv_loss = []
-        val_cv_loss = []
-        trn_score = []
-        val_score = []
+        cv_loss = []
+        cv_score = []
         off_df=[]
 
         for trn, val in tqdm( k.split(self.train_df, self.train_df.jobflag), total=k.n_splits ):
@@ -54,7 +52,7 @@ class Train_Predict:
             val_X, val_y = val_df[self.feature].values.tolist(),val_df[['jobflag_2']].values.tolist() 
 
             trn_data_set = CreateDataset(trn_X, trn_y)
-            trn_dataloader = DataLoader(trn_data_set, shuffle=False, batch_size=512, sampler=ImbalancedDatasetSampler(trn_data_set))
+            trn_dataloader = DataLoader(trn_data_set, shuffle=False, batch_size=256, sampler=ImbalancedDatasetSampler(trn_data_set))
             val_data_set = CreateDataset(val_X, val_y)
             val_dataloader = DataLoader(val_data_set, shuffle=False, batch_size=len(val_data_set))
 
@@ -72,7 +70,7 @@ class Train_Predict:
                 trn_loss_avg, trn_preds, trn_labels = self.model_trainer.train(trn_dataloader)
                 val_loss_avg, p = self.model_trainer.eval(val_dataloader)
                 
-                trn_preds = np.argmax(trn_preds, axis=1)
+                trn_preds = np.round(trn_preds[:,1])
                 trn_score_list.append(metrics.accuracy_score(trn_labels, trn_preds))
                 
                 trn_loss_list.append(trn_loss_avg)
@@ -81,19 +79,17 @@ class Train_Predict:
                 val_df[f'p_{_label}_{e}'] += p[:,1]
             for e in range(epoch_num):
                 p = val_df[[f'p_{_label}_{e}']].values
-                preds = np.argmax(p, axis=1)
+                preds = np.round(p)
                 val_score_list.append( metrics.accuracy_score(val_df['jobflag_2'], preds) )
                 
-            trn_cv_loss.append(trn_loss_list)
-            val_cv_loss.append(val_loss_list)
-            trn_score.append(trn_score_list)
-            val_score.append(val_score_list)
+            cv_loss.append([trn_loss_list, val_loss_list])
+            cv_score.append([trn_score_list, val_score_list])
             off_df.append(val_df)
 
         off_df = pd.concat(off_df, axis=0)
         off_df.sort_values('text_id', inplace=True)
         off_df.reset_index(drop=True, inplace=True)
-        return off_df, trn_cv_loss, val_cv_loss, trn_score, val_score
+        return off_df, cv_loss, cv_score
     
     
     def predict_test_df(self, _label, epoch_num):
@@ -101,7 +97,7 @@ class Train_Predict:
         
         X, y = self.train_df[self.feature].values.tolist(), self.train_df[['jobflag_2']].values.tolist()
         trn_data_set = CreateDataset(X, y)
-        trn_dataloader = DataLoader(trn_data_set, shuffle=False, batch_size=512, sampler=ImbalancedDatasetSampler(trn_data_set))
+        trn_dataloader = DataLoader(trn_data_set, shuffle=False, batch_size=256, sampler=ImbalancedDatasetSampler(trn_data_set))
 
         val_X, val_y = self.test_df[self.feature].values.tolist(), None
         val_data_set = CreateDataset(val_X, val_y)
@@ -122,7 +118,7 @@ class Train_Predict:
             trn_loss_list=[]
             
             for e in range(epoch_num):
-                trn_loss_avg = self.model_trainer.train(trn_dataloader)
+                trn_loss_avg, _1, _2 = self.model_trainer.train(trn_dataloader)
                 p = self.model_trainer.predict(val_dataloader)
                 test_df[f'p_{_label}_{e}'] += p[:,1]/3
                 trn_loss_list.append(trn_loss_avg)

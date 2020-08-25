@@ -38,10 +38,8 @@ class Train_Predict:
                                            lr=self.lr, weight_decay=self.weight_decay)
         
     def make_off_df(self, epoch_num, k):
-        trn_cv_loss = []
-        val_cv_loss = []
-        trn_score = []
-        val_score = []
+        cv_loss = []
+        cv_score = []
         off_df=[]
 
         for trn, val in tqdm( k.split(self.train_df, self.train_df.jobflag), total=k.n_splits ):
@@ -83,16 +81,14 @@ class Train_Predict:
                 preds = np.argmax(p, axis=1)+1
                 val_score_list.append( metrics.f1_score(val_df['jobflag'], preds, average='macro'))
                 
-            trn_cv_loss.append(trn_loss_list)
-            val_cv_loss.append(val_loss_list)
-            trn_score.append(trn_score_list)
-            val_score.append(val_score_list)
+            cv_loss.append([trn_loss_list, val_loss_list])
+            cv_score.append([trn_score_list, val_score_list])
             off_df.append(val_df)
 
         off_df = pd.concat(off_df, axis=0)
         off_df.sort_values('text_id', inplace=True)
         off_df.reset_index(drop=True, inplace=True)
-        return off_df, trn_cv_loss, val_cv_loss, trn_score, val_score
+        return off_df, cv_loss, cv_score
     
     
     def predict_test_df(self, epoch_num):
@@ -121,7 +117,7 @@ class Train_Predict:
             trn_loss_list=[]
             
             for e in range(epoch_num):
-                trn_loss_avg = self.model_trainer.train(trn_dataloader)
+                trn_loss_avg, _1, _2 = self.model_trainer.train(trn_dataloader)
                 p = self.model_trainer.predict(val_dataloader)
                 for mm in range(4):
                     test_df[f'p_{mm+1}_{e}'] += p[:,mm]/3
